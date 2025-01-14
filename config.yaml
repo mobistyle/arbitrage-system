@@ -1,0 +1,27 @@
+exchanges:
+  binance:
+    api_key: ""
+    api_secret: ""
+    enabled: true
+  kucoin:
+    api_key: ""
+    api_secret: ""
+    enabled: true
+  okx:
+    api_key: ""
+    api_secret: ""
+    enabled: true
+
+monitoring:
+  update_interval_ms: 1000
+  price_timeout_ms: 5000
+  supported_quote_tokens:
+    - USDT
+    - USDC
+    - BUSD
+    - BTC
+
+arbitrage:
+  min_profit_percentage: 0.5
+  min_volume_24h: 100000.0
+  min_exchanges_required: 3
