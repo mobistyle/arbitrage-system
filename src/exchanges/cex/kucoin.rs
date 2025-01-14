@@ -1,40 +1,28 @@
+use crate::exchanges::{Exchange, ExchangeError, Result, OrderBook};
+use crate::types::MarketPrice;
 use async_trait::async_trait;
-use serde::Deserialize;
-use crate::exchanges::{Exchange, MarketPrice, OrderBook};
-use anyhow::Result;
 use chrono::Utc;
-use log::info;
+use rust_decimal::Decimal;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct KucoinResponse<T> {
+struct KuCoinResponse {
     code: String,
-    data: Option<T>,
+    data: KuCoinPrice,
 }
 
 #[derive(Debug, Deserialize)]
-struct KucoinPrice {
-    #[serde(rename = "price")]
-    price: Option<String>,
+struct KuCoinPrice {
+    price: String,
+    size: Option<String>,
+    time: u64,
 }
 
-pub struct KuCoin {
-    client: reqwest::Client,
-}
+pub struct KuCoin;
 
 impl KuCoin {
     pub fn new() -> Self {
-        KuCoin {
-            client: reqwest::Client::new(),
-        }
-    }
-
-    fn format_symbol(&self, symbol: &str) -> String {
-        if symbol.ends_with("USDT") {
-            let base = &symbol[..symbol.len() - 4];
-            format!("{}-USDT", base)
-        } else {
-            symbol.to_string()
-        }
+        Self
     }
 }
 
@@ -45,38 +33,35 @@ impl Exchange for KuCoin {
     }
 
     async fn get_price(&self, symbol: &str) -> Result<MarketPrice> {
-        let kucoin_symbol = self.format_symbol(symbol);
+        let formatted_symbol = symbol.replace("USDT", "-USDT");
         let url = format!(
             "https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={}",
-            kucoin_symbol
+            formatted_symbol
         );
-
-        info!("Fetching KuCoin price for {}: {}", symbol, url);
         
-        let response = self.client
-            .get(&url)
-            .send()
-            .await?;
+        let response = reqwest::get(&url).await?;
+        
+        if response.status().is_success() {
+            let kucoin_resp: KuCoinResponse = response.json().await?;
+            let volume = kucoin_resp.data.size
+                .and_then(|s| s.parse::<Decimal>().ok());
             
-        let response_text = response.text().await?;
-        info!("KuCoin response: {}", response_text);
-        
-        let response: KucoinResponse<KucoinPrice> = serde_json::from_str(&response_text)?;
-
-        let price = response.data
-            .and_then(|d| d.price)
-            .ok_or_else(|| anyhow::anyhow!("No price data available"))?;
-
-        Ok(MarketPrice {
-            price: price.parse()?,
-            timestamp: Utc::now(),
-        })
+            Ok(MarketPrice::new(
+                kucoin_resp.data.price.parse::<Decimal>()
+                    .map_err(|e| ExchangeError::Parse(e.to_string()))?,
+                volume,
+                Utc::now().timestamp()
+            ))
+        } else {
+            Err(ExchangeError::Exchange(format!("HTTP {}", response.status())))
+        }
     }
 
     async fn get_orderbook(&self, _symbol: &str) -> Result<OrderBook> {
         Ok(OrderBook {
             bids: vec![],
             asks: vec![],
+            timestamp: Utc::now().timestamp(),
         })
     }
 }

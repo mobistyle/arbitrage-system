@@ -1,35 +1,37 @@
 use async_trait::async_trait;
 use serde::Deserialize;
-use crate::exchanges::{Exchange, MarketPrice, OrderBook};
-use anyhow::Result;
+use crate::exchanges::{Exchange, Result, OrderBook};
+use crate::types::MarketPrice;
 use chrono::Utc;
+use log::{error, warn};
+
+pub struct Bybit;
 
 #[derive(Debug, Deserialize)]
-struct BybitResponse {
+struct BybitResponse<T> {
     retCode: i32,
     retMsg: String,
-    result: BybitResult,
-}
-
-#[derive(Debug, Deserialize)]
-struct BybitResult {
-    list: Vec<BybitTicker>,
+    result: T,
 }
 
 #[derive(Debug, Deserialize)]
 struct BybitTicker {
+    symbol: String,
     lastPrice: String,
+    volume24h: String,
+    #[serde(rename = "turnover24h")]
+    turnover: String,
 }
 
-pub struct Bybit {
-    client: reqwest::Client,
+#[derive(Debug, Deserialize)]
+struct BybitResult {
+    category: String,
+    list: Vec<BybitTicker>,
 }
 
 impl Bybit {
     pub fn new() -> Self {
-        Bybit {
-            client: reqwest::Client::new(),
-        }
+        Self
     }
 }
 
@@ -45,38 +47,54 @@ impl Exchange for Bybit {
             symbol
         );
 
-        println!("Fetching Bybit price for {}: {}", symbol, url); // Debug line
-
-        let response = self.client
-            .get(&url)
-            .send()
+        let response = reqwest::get(&url)
+            .await?
+            .json::<BybitResponse<BybitResult>>()
             .await?;
 
-        let text = response.text().await?;
-        println!("Bybit response: {}", text); // Debug line
-
-        let response: BybitResponse = serde_json::from_str(&text)?;
-
-        if response.retCode != 0 {
-            return Err(anyhow::anyhow!("Bybit API error: {}", response.retMsg));
+        if response.retCode == 0 {
+            if let Some(ticker) = response.result.list.first() {
+                match ticker.lastPrice.parse() {
+                    Ok(price) => {
+                        let volume = ticker.volume24h.parse().ok();
+                        Ok(MarketPrice {
+                            price,
+                            volume_24h: volume,
+                            timestamp: Utc::now().timestamp(),
+                        })
+                    }
+                    Err(e) => {
+                        error!("Failed to parse Bybit price: {}", e);
+                        Ok(MarketPrice {
+                            price: rust_decimal_macros::dec!(0),
+                            volume_24h: None,
+                            timestamp: Utc::now().timestamp(),
+                        })
+                    }
+                }
+            } else {
+                warn!("No price data available for {} on Bybit", symbol);
+                Ok(MarketPrice {
+                    price: rust_decimal_macros::dec!(0),
+                    volume_24h: None,
+                    timestamp: Utc::now().timestamp(),
+                })
+            }
+        } else {
+            error!("Bybit API error: {}", response.retMsg);
+            Ok(MarketPrice {
+                price: rust_decimal_macros::dec!(0),
+                volume_24h: None,
+                timestamp: Utc::now().timestamp(),
+            })
         }
-
-        let price = response.result.list
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("No price data available"))?
-            .lastPrice
-            .clone();
-
-        Ok(MarketPrice {
-            price: price.parse()?,
-            timestamp: Utc::now(),
-        })
     }
 
-    async fn get_orderbook(&self, symbol: &str) -> Result<OrderBook> {
+    async fn get_orderbook(&self, _symbol: &str) -> Result<OrderBook> {
         Ok(OrderBook {
             bids: vec![],
             asks: vec![],
+            timestamp: Utc::now().timestamp(),
         })
     }
 }

@@ -1,10 +1,10 @@
-use serde::Serialize;
+use chrono::{DateTime, Utc};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Alert {
-    pub symbol: String,
+    pub timestamp: DateTime<Utc>,
     pub message: String,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug)]
@@ -14,20 +14,19 @@ pub struct AlertManager {
 
 impl AlertManager {
     pub fn new() -> Self {
-        AlertManager {
+        Self {
             alerts: Vec::new(),
         }
     }
 
-    pub fn add_alert(&mut self, alert: Alert) {
-        self.alerts.push(alert);
+    pub fn send_alert(&mut self, message: String) {
+        self.alerts.push(Alert {
+            timestamp: Utc::now(),
+            message,
+        });
     }
 
-    pub fn get_recent_alerts(&self, count: usize) -> Vec<Alert> {
-        self.alerts.iter()
-            .rev()
-            .take(count)
-            .cloned()
-            .collect()
+    pub fn get_alerts(&self) -> Vec<Alert> {
+        self.alerts.clone()
     }
 }

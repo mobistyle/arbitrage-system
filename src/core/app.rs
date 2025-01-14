@@ -1,81 +1,138 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use crate::exchanges::Exchange;
-use crate::exchanges::cex::{Binance, KuCoin, Bybit};
-use crate::metrics::MetricsCollector;
-use crate::alerts::AlertManager;
+use crossterm::{
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    cursor::{Hide, Show, MoveTo},
+    style::Stylize,
+};
+use std::io::{stdout, Write};
+use chrono::Utc;
 use rust_decimal::Decimal;
-use rust_decimal_macros::dec;
-use log::{info, error};
-use std::collections::HashMap;
+use crate::core::{logger::log, pairs::PairsManager};
+use std::time::Duration;
+use tokio::time::sleep;
+
+#[derive(Clone)]
+pub struct Exchange {
+    pub name: String,
+}
 
 pub struct App {
-    exchanges: Vec<Box<dyn Exchange>>,
-    metrics: Arc<MetricsCollector>,
-    alert_manager: Arc<Mutex<AlertManager>>,
-    min_profit_threshold: Decimal,
-    exchange_fees: HashMap<String, Decimal>,
+    user: String,
+    pairs_manager: PairsManager,
+    exchanges: Vec<Exchange>,
 }
 
 impl App {
-    pub fn new(metrics: Arc<MetricsCollector>, alert_manager: Arc<Mutex<AlertManager>>) -> Self {
-        let mut exchange_fees = HashMap::new();
-        exchange_fees.insert("Binance".to_string(), dec!(0.001)); // 0.1%
-        exchange_fees.insert("KuCoin".to_string(), dec!(0.001));  // 0.1%
-        exchange_fees.insert("Bybit".to_string(), dec!(0.001));   // 0.1%
-
-        App {
-            exchanges: Vec::new(),
-            metrics,
-            alert_manager,
-            min_profit_threshold: dec!(0.005), // 0.5%
-            exchange_fees,
+    pub fn new(user: &str) -> Self {
+        let exchanges = vec![
+            Exchange { name: "Binance".to_string() },
+            Exchange { name: "Bybit".to_string() },
+            Exchange { name: "Kucoin".to_string() }, // Исправлено с OKX на Kucoin
+        ];
+    
+        Self {
+            user: user.to_string(),
+            pairs_manager: PairsManager::new(),
+            exchanges,
         }
     }
 
-    pub async fn run(&mut self) {
-        info!("Starting arbitrage system...");
+    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        log("Starting Arbitrage Monitor");
         
-        // Initialize exchanges
-        info!("Initializing Binance exchange...");
-        self.exchanges.push(Box::new(Binance::new()));
-        
-        info!("Adding exchange: Binance");
-        
-        info!("Initializing KuCoin exchange...");
-        self.exchanges.push(Box::new(KuCoin::new()));
-        
-        info!("Adding exchange: KuCoin");
+        let mut stdout = stdout();
+        enable_raw_mode()?;
+        execute!(stdout, Hide)?;
 
-        info!("Initializing Bybit exchange...");
-        self.exchanges.push(Box::new(Bybit::new()));
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let tx_clone = tx.clone();
         
-        info!("Adding exchange: Bybit");
+        ctrlc::set_handler(move || {
+            let _ = tx_clone.blocking_send(());
+        })?;
 
-        info!("Starting market monitoring...");
-        info!("Minimum profit threshold: {}%", self.min_profit_threshold * dec!(100));
-        
-        info!("Exchange fees:");
-        for (exchange, fee) in &self.exchange_fees {
-            info!("  {}: {}%", exchange, fee * dec!(100));
-        }
-
-        let symbols = vec!["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+        let start_time = Utc::now();
+        let mut counter = 0;
 
         loop {
-            for symbol in &symbols {
-                for exchange in &self.exchanges {
-                    match exchange.get_price(symbol).await {
-                        Ok(price) => {
-                            info!("{}: {} = {}", exchange.get_name(), symbol, price);
-                        }
-                        Err(e) => {
-                            error!("Failed to get {} price from {}: {}", symbol, exchange.get_name(), e);
-                        }
+            tokio::select! {
+                _ = rx.recv() => {
+                    self.cleanup_and_exit(&mut stdout, "Received Ctrl+C").await?;
+                    break;
+                }
+                _ = async {
+                    counter += 1;
+                    let now = Utc::now();
+                    
+                    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
+
+                    println!("╔════════════════════════════════════════════════════════════════╗");
+                    println!("║ 🤖 Arbitrage Monitor v1.0                                      ║");
+                    println!("║ 👤 User: {:<52} ║", self.user.clone().blue());
+                    println!("║ 🕒 Started: {:<48} ║", 
+                        start_time.format("%Y-%m-%d %H:%M:%S UTC").to_string());
+                    println!("║ ⌛ Uptime: {:<50} ║",
+                        format!("{}h {}m {}s",
+                            (now - start_time).num_hours(),
+                            (now - start_time).num_minutes() % 60,
+                            (now - start_time).num_seconds() % 60
+                        ).yellow()
+                    );
+                    println!("║ 📊 Pairs: {:<3} | Exchanges: {:<3} | Updates: {:<5}            ║", 
+                        self.pairs_manager.get_pairs_count(),
+                        self.exchanges.len(),
+                        counter.to_string().yellow()
+                    );
+                    println!("╚════════════════════════════════════════════════════════════════╝\n");
+
+                    println!("Update #{} - {}", 
+                        counter.to_string().yellow(),
+                        now.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+                    );
+                    println!("{}\n", "─".repeat(70));
+
+                    PairsManager::print_table_header();
+
+                    let test_opportunity = crate::core::pairs::ArbitrageOpportunity {
+                        pair: "BTCUSDT".to_string(),
+                        buy_exchange: "Binance".to_string(),
+                        sell_exchange: "Bybit".to_string(),
+                        buy_price: Decimal::new(42000, 0),
+                        sell_price: Decimal::new(42100, 0),
+                        spread: Decimal::new(238, 3),
+                        timestamp: Utc::now(),
+                    };
+
+                    println!("{}", self.pairs_manager.format_opportunity(&test_opportunity));
+                    println!("└──────────┴────────────────────┴────────────────────┴──────────┴──────────┴──────────┘");
+
+                    println!("\n📈 Performance Stats:");
+                    println!("  📊 Pairs monitored: {}", self.pairs_manager.get_pairs_count());
+                    println!("  🏢 Active exchanges: {}", self.exchanges.len());
+                    println!("  ⚡ Updates: {}", counter);
+                    
+                    print!("\n⏳ Next update in 1s... (Press Ctrl+C to exit)");
+                    stdout.flush()?;
+
+                    sleep(Duration::from_secs(1)).await;
+                    Ok::<(), Box<dyn std::error::Error>>(())
+                } => {
+                    if let Err(e) = std::io::stdout().flush() {
+                        log(&format!("Error flushing stdout: {}", e));
                     }
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
+
+        Ok(())
+    }
+
+    async fn cleanup_and_exit(&self, stdout: &mut std::io::Stdout, reason: &str) -> Result<(), Box<dyn std::error::Error>> {
+        log(&format!("Cleaning up: {}", reason));
+        execute!(stdout, Show)?;
+        disable_raw_mode()?;
+        println!("\n👋 Shutting down: {}", reason);
+        println!("✨ Thank you for using Arbitrage Monitor!");
+        Ok(())
     }
 }

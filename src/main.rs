@@ -1,36 +1,67 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use arbitrage_system::{
-    core::app::App,
-    metrics::MetricsCollector,
-    alerts::AlertManager,
+mod pairs;
+mod logger;
+
+use pairs::TradingPairs;
+use crossterm::{
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    cursor::{Hide, Show, MoveTo},
 };
+use std::io::stdout;
+use chrono::Utc;
+use colored::*;
+use arbitrage_system::core::{app::App, logger::log};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logger
-    env_logger::init();
-
-    // Create metrics collector and alert manager
-    let metrics = Arc::new(MetricsCollector::new());
-    let alert_manager = Arc::new(Mutex::new(AlertManager::new()));
-
-    // Create and run the app
-    let mut app = App::new(metrics.clone(), alert_manager.clone());
+    log("Starting Arbitrage Monitor");
     
-    // Start API server
-    let metrics_for_api = metrics.clone();
-    let alert_manager_for_api = alert_manager.clone();
+    let app = App::new("mobistyle");
+    app.run().await?;
     
-    tokio::spawn(async move {
-        arbitrage_system::api::start_api_server(
-            metrics_for_api,
-            alert_manager_for_api,
-        ).await;
-    });
-
-    // Run the main app
-    app.run().await;
-
     Ok(())
+}
+
+    let start_time = Utc::now();
+    let mut counter = 0;
+
+    loop {
+        counter += 1;
+        let now = Utc::now();
+        
+        // Очистка экрана и обновление информации
+        execute!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
+
+        // Вывод шапки
+        println!("╔════════════════════════════════════════════════════════════════╗");
+        println!("║ 🤖 Arbitrage Monitor v1.0                                      ║");
+        println!("║ 👤 User: {:<52} ║", "mobistyle".bright_blue());
+        println!("║ 🕒 Started: {:<48} ║", 
+            start_time.format("%Y-%m-%d %H:%M:%S UTC"));
+        println!("║ ⌛ Uptime: {:<50} ║",
+            format!("{}", (now - start_time).num_seconds() / 3600).bright_yellow());
+        println!("║ 📊 {:<56} ║", trading_pairs.display_pair_info());
+        println!("╚════════════════════════════════════════════════════════════════╝\n");
+
+        // Обновление данных
+        println!("Update #{} - {}", 
+            counter.to_string().bright_yellow(),
+            now.format("%Y-%m-%d %H:%M:%S UTC").bright_blue()
+        );
+        println!("{}\n", "─".repeat(70));
+
+        // Вывод таблицы пар
+        TradingPairs::print_table_header();
+        println!("└──────────┴────────────────────┴────────────────────┴──────────┴──────────┴──────────┘");
+
+        // Статистика
+        println!("\n📈 Performance Stats:");
+        println!("  📊 Pairs monitored: {}", trading_pairs.get_pairs_count());
+        
+        // Индикатор обновления
+        print!("\n⏳ Next update in 1s... (Press Ctrl+C to exit)");
+        std::io::Write::flush(&mut stdout)?;
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
 }
