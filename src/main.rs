@@ -1,59 +1,33 @@
-use arbitrage_system::{
-    config::AppConfig,
-    core::app::App,
-    utils::{logger, metrics},
-};
+mod exchanges;
+mod utils;
+
+use crate::exchanges::cex::binance::client::BinanceClient;
+use crate::exchanges::cex::base::Exchange;
+use dotenv::dotenv;
 use tracing::{info, error};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logger and metrics
-    logger::init_logger();
-    metrics::init_metrics();
-
-    info!("Starting arbitrage system at 2025-01-14 11:47:34 UTC");
-    info!("User: mobistyle");
-
-    // Load configuration
-    let config = match AppConfig::load() {
-        Ok(config) => {
-            info!("Configuration loaded successfully");
-            config
-        }
-        Err(e) => {
-            error!("Failed to load configuration: {}", e);
-            return Err(e.into());
-        }
-    };
-
-    info!("Monitoring settings:");
-    info!("  Update interval: {}ms", config.monitoring.update_interval_ms);
-    info!("  Price timeout: {}ms", config.monitoring.price_timeout_ms);
-    info!("  Supported quote tokens: {:?}", config.monitoring.supported_quote_tokens);
-
-    info!("Arbitrage settings:");
-    info!("  Min profit: {}%", config.arbitrage.min_profit_percentage);
-    info!("  Min volume: ${}", config.arbitrage.min_volume_24h);
-    info!("  Required exchanges: {}", config.arbitrage.min_exchanges_required);
-
-    // Create and initialize application
-    let mut app = App::new(config);
-    if let Err(e) = app.initialize().await {
-        error!("Failed to initialize application: {}", e);
-        return Err(e.into());
+async fn main() -> anyhow::Result<()> {
+    dotenv().ok();
+    
+    // Инициализация логгера
+    tracing_subscriber::fmt::init();
+    
+    info!("Testing Binance connection...");
+    
+    let client = BinanceClient::new()?;
+    
+    // Тестируем получение цены
+    match client.get_ticker_price("BTCUSDT").await {
+        Ok(price) => info!("BTC/USDT price: {}", price),
+        Err(e) => error!("Error getting price: {}", e),
     }
-
-    info!("Application initialized successfully");
-
-    // Run the application
-    match app.run().await {
-        Ok(_) => {
-            info!("Application completed successfully");
-            Ok(())
-        }
-        Err(e) => {
-            error!("Application error: {}", e);
-            Err(e.into())
-        }
+    
+    // Тестируем получение баланса USDT
+    match client.get_balance("USDT").await {
+        Ok(balance) => info!("USDT balance: {}", balance),
+        Err(e) => error!("Error getting balance: {}", e),
     }
+    
+    Ok(())
 }

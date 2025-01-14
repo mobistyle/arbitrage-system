@@ -1,0 +1,37 @@
+name: Code Analysis
+
+on:
+  push:
+    paths:
+      - '**/*.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+        override: true
+    
+    - name: Security audit
+      run: |
+        cargo install cargo-audit
+        cargo audit
+        
+    - name: Generate dependency graph
+      run: |
+        cargo install cargo-deps
+        cargo deps | dot -Tpng > dependency-graph.png
+        
+    - name: Upload dependency graph
+      uses: actions/upload-artifact@v2
+      with:
+        name: dependency-graph
+        path: dependency-graph.png

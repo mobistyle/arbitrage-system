@@ -1,7 +1,8 @@
 .env
-.env.local
-*.key
-config/secrets.yaml
-node_modules/
+.env.*
 target/
 Cargo.lock
+**/*.rs.bk
+.idea/
+.vscode/
+*.log
