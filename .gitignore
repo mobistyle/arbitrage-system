@@ -1,8 +1,7 @@
-.env
-.env.*
-target/
-Cargo.lock
+/target
 **/*.rs.bk
+Cargo.lock
+.env
 .idea/
 .vscode/
 *.log

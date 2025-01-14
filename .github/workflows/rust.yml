@@ -16,6 +16,8 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Install Rust
       uses: actions-rs/toolchain@v1
@@ -43,8 +45,8 @@ jobs:
       if: success()
       run: |
         echo "Last successful build: $(date -u)" > build_status.txt
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+        git config --local user.email "actions@github.com"
         git add build_status.txt
-        git commit -m "Update build status" || echo "No changes to commit"
+        git commit -m "Update build status [skip ci]" || echo "No changes to commit"
         git push || echo "No changes to push"
