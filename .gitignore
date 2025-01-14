@@ -8,3 +8,4 @@ secrets/
 /target
 **/*.rs.bk
 Cargo.lock
+.env
