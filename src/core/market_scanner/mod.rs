@@ -22,7 +22,7 @@ impl MarketScanner {
 
             match exchange.get_available_pairs().await {
                 Ok(pairs) => {
-                    let pairs_count = pairs.len();
+                    let pairs_count = pairs.len(); // Сохраним количество пар до вызова into_iter()
                     let pair_infos: Vec<TradingPairInfo> = pairs.into_iter()
                         .map(|pair| TradingPairInfo {
                             pair,
