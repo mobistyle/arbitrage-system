@@ -1,0 +1,49 @@
+exchanges:
+  binance:
+    enabled: true
+    api_key: "${BINANCE_API_KEY}"
+    api_secret: "${BINANCE_API_SECRET}"
+  okx:
+    enabled: true
+    api_key: "${OKX_API_KEY}"
+    api_secret: "${OKX_API_SECRET}"
+    passphrase: "${OKX_PASSPHRASE}"
+  bybit:
+    enabled: true
+    api_key: "${BYBIT_API_KEY}"
+    api_secret: "${BYBIT_API_SECRET}"
+  kucoin:
+    enabled: true
+    api_key: "${KUCOIN_API_KEY}"
+    api_secret: "${KUCOIN_API_SECRET}"
+    passphrase: "${KUCOIN_PASSPHRASE}"
+  htx:
+    enabled: true
+    api_key: "${HTX_API_KEY}"
+    api_secret: "${HTX_API_SECRET}"
+  mexc:
+    enabled: true
+    api_key: "${MEXC_API_KEY}"
+    api_secret: "${MEXC_API_SECRET}"
+  gateio:
+    enabled: true
+    api_key: "${GATEIO_API_KEY}"
+    api_secret: "${GATEIO_API_SECRET}"
+
+monitoring:
+  update_interval_ms: 1000
+  price_timeout_ms: 5000
+  supported_quote_tokens: ["USDT", "USDC", "DAI"]
+
+arbitrage:
+  min_profit_usd: 1.0
+  min_volume_24h: 100000.0
+  min_exchanges_required: 3
+  max_trade_amount: 100.0
+  daily_limit: 1000.0
+  max_loss_per_trade: 5.0
+  max_daily_loss: 50.0
+
+telegram:
+  token: "${TELEGRAM_BOT_TOKEN}"
+  enabled: true
